@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 
 // Plays once per fresh page load / site open so in-app back navigation stays instant
@@ -32,7 +32,14 @@ const TRADE_ROUTES: [number, number][] = [
   [0, 4],
 ];
 
-export function IndiaOpeningAnimation() {
+interface IndiaOpeningAnimationProps {
+  onRevealStart?: () => void;
+}
+
+export function IndiaOpeningAnimation({ onRevealStart }: IndiaOpeningAnimationProps) {
+  const onRevealStartRef = useRef(onRevealStart);
+  onRevealStartRef.current = onRevealStart;
+
   const [visible, setVisible] = useState<boolean>(() => {
     if (hasPlayedOpeningIntro) return false;
     if (
@@ -48,16 +55,20 @@ export function IndiaOpeningAnimation() {
   const [zoomingIn, setZoomingIn] = useState(false);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      onRevealStartRef.current?.();
+      return;
+    }
     hasPlayedOpeningIntro = true;
 
     const zoomTimer = window.setTimeout(() => {
       setZoomingIn(true);
-    }, 3400);
+      onRevealStartRef.current?.();
+    }, 2200);
 
     const endTimer = window.setTimeout(() => {
       setVisible(false);
-    }, 4800);
+    }, 3150);
 
     return () => {
       window.clearTimeout(zoomTimer);
@@ -67,6 +78,7 @@ export function IndiaOpeningAnimation() {
 
   const handleSkip = () => {
     hasPlayedOpeningIntro = true;
+    onRevealStartRef.current?.();
     setVisible(false);
   };
 
@@ -77,8 +89,8 @@ export function IndiaOpeningAnimation() {
           initial={{ opacity: 1 }}
           animate={{ opacity: zoomingIn ? 0 : 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 1.3, ease: [0.22, 1, 0.36, 1] }}
-          className="fixed inset-0 z-50 bg-slate-900 flex flex-col items-center justify-center overflow-hidden select-none"
+          transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+          className="fixed inset-0 z-50 bg-slate-900 flex flex-col items-center justify-center overflow-hidden select-none will-change-[opacity]"
           role="presentation"
         >
           {/* Subtle cartographic radial atmosphere */}
@@ -92,23 +104,23 @@ export function IndiaOpeningAnimation() {
 
           {/* Zooming India Map Stage */}
           <motion.div
-            initial={{ scale: 0.65, opacity: 0 }}
+            initial={{ scale: 0.72, opacity: 0 }}
             animate={
               zoomingIn
-                ? { scale: 4.2, opacity: 0 }
+                ? { scale: 2.6, opacity: 0 }
                 : { scale: 1, opacity: 1 }
             }
             transition={
               zoomingIn
-                ? { duration: 1.35, ease: [0.32, 0, 0.2, 1] }
-                : { duration: 1.1, ease: [0.16, 1, 0.3, 1] }
+                ? { duration: 0.95, ease: [0.32, 0, 0.2, 1] }
+                : { duration: 0.85, ease: [0.16, 1, 0.3, 1] }
             }
             style={{ transformOrigin: '42% 54%' }}
-            className="relative w-full max-w-[460px] sm:max-w-[520px] px-4 flex flex-col items-center"
+            className="relative w-full max-w-[440px] sm:max-w-[500px] px-4 flex flex-col items-center will-change-transform"
           >
             <svg
               viewBox="0 0 590 640"
-              className="w-full h-auto max-h-[68vh] drop-shadow-[0_18px_45px_rgba(13,148,136,0.22)]"
+              className="w-full h-auto max-h-[66vh]"
               aria-label="Map of India wholesale trade hubs"
             >
               <defs>

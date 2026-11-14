@@ -41,6 +41,11 @@ export function LandingPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [productsError, setProductsError] = useState<string | null>(null);
+  const [hero3DActive, setHero3DActive] = useState(false);
+
+  const handleIntroReveal = useCallback(() => {
+    setHero3DActive(true);
+  }, []);
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -139,7 +144,7 @@ export function LandingPage() {
   return (
     <MarketplaceLayout>
       <MotionConfig reducedMotion="user">
-        <IndiaOpeningAnimation />
+        <IndiaOpeningAnimation onRevealStart={handleIntroReveal} />
 
         {/* Top Scroll Progress Line */}
         <motion.div
@@ -199,7 +204,7 @@ export function LandingPage() {
               transition={{ duration: 0.55, delay: 0.08, ease: EASE_OUT_EXPO }}
               className="lg:col-span-6 relative min-h-[360px] lg:min-h-[520px]"
             >
-              <HeroWholesale3D />
+              <HeroWholesale3D active={hero3DActive} />
             </motion.div>
           </div>
         </section>
@@ -518,6 +523,8 @@ export function LandingPage() {
                   src={showroomImg}
                   alt="Organized wholesale trade showroom and bulk merchandise"
                   className="w-full h-full object-cover"
+                  loading="lazy"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                 />
               </div>
@@ -586,6 +593,8 @@ export function LandingPage() {
                   src={logisticsImg}
                   alt="Regional B2B fulfillment center and shipping bay"
                   className="w-full h-full object-cover"
+                  loading="lazy"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                 />
               </div>

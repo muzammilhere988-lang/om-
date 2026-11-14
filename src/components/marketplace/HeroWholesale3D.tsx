@@ -25,18 +25,14 @@ const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3(1, 1, 1);
 const _up = new THREE.Vector3(0, 1, 0);
 
-function detectSoftwareWebGL(): boolean {
+function isSoftwareRenderer(gl: WebGLRenderingContext | WebGL2RenderingContext): boolean {
   try {
-    const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-    if (!gl) return true;
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
     const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
     const gpu = String(gl.getParameter(param) || '');
-    gl.getExtension('WEBGL_lose_context')?.loseContext();
     return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -162,7 +158,11 @@ function createContactShadowTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-export function HeroWholesale3D() {
+interface HeroWholesale3DProps {
+  active?: boolean;
+}
+
+export function HeroWholesale3D({ active = true }: HeroWholesale3DProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [preset, setPreset] = useState<CameraPreset>('overview');
   const [autoRotate, setAutoRotate] = useState(true);
@@ -181,6 +181,7 @@ export function HeroWholesale3D() {
   }, [autoRotate]);
 
   useEffect(() => {
+    if (!active) return;
     const container = mountRef.current;
     if (!container) return;
 
@@ -194,11 +195,10 @@ export function HeroWholesale3D() {
       return;
     }
 
-    const isSoftwareGl = detectSoftwareWebGL();
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({
-        antialias: !isSoftwareGl,
+        antialias: window.innerWidth >= 768,
         alpha: false,
         powerPreference: 'high-performance',
       });
@@ -207,16 +207,18 @@ export function HeroWholesale3D() {
       return;
     }
 
+    const isSoftwareGl = isSoftwareRenderer(renderer.getContext());
     const width = Math.max(container.clientWidth, 320);
     const height = Math.max(container.clientHeight, 300);
+    const maxDpr = isSoftwareGl ? 1 : window.innerWidth < 768 ? 1.25 : 1.5;
 
     renderer.setSize(width, height);
-    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxDpr));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.12;
     renderer.shadowMap.enabled = !isSoftwareGl;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
 
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
@@ -247,8 +249,8 @@ export function HeroWholesale3D() {
     const keyLight = new THREE.DirectionalLight(0xfff1db, 2.1);
     keyLight.position.set(7.5, 11, 6.5);
     keyLight.castShadow = !isSoftwareGl;
-    keyLight.shadow.mapSize.width = 1024;
-    keyLight.shadow.mapSize.height = 1024;
+    keyLight.shadow.mapSize.width = 512;
+    keyLight.shadow.mapSize.height = 512;
     keyLight.shadow.camera.near = 1;
     keyLight.shadow.camera.far = 28;
     const d = 6.5;
@@ -329,14 +331,14 @@ export function HeroWholesale3D() {
     const glassCanopyMat = trackMat(
       new THREE.MeshPhysicalMaterial({
         color: 0x99f6e4,
-        metalness: 0.05,
-        roughness: 0.08,
-        transmission: isSoftwareGl ? 0 : 0.84,
+        metalness: 0.1,
+        roughness: 0.06,
         transparent: true,
-        opacity: isSoftwareGl ? 0.38 : 1,
+        opacity: 0.36,
         ior: 1.5,
-        thickness: 0.6,
         clearcoat: 1.0,
+        clearcoatRoughness: 0.05,
+        envMapIntensity: 1.8,
         depthWrite: false,
       })
     );
@@ -665,10 +667,6 @@ export function HeroWholesale3D() {
     instancedNodes.computeBoundingSphere();
     worldRoot.add(instancedNodes);
 
-    if (!isSoftwareGl) {
-      renderer.compile(scene, camera);
-    }
-
     // Pointer drag + parallax interaction
     let isDragging = false;
     let prevX = 0;
@@ -744,9 +742,11 @@ export function HeroWholesale3D() {
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(container);
 
-    // Animation loop with software WebGL pacing
+    // Animation loop with off-screen + visibility + software WebGL pacing
     let frameId = 0;
     let disposed = false;
+    let isInViewport = true;
+    let isTabVisible = typeof document === 'undefined' || !document.hidden;
     const clock = new THREE.Clock();
     let autoSpinAngle = 0;
 
@@ -774,8 +774,17 @@ export function HeroWholesale3D() {
       }
     }
 
+    const scheduleNext = () => {
+      if (disposed || !isInViewport || !isTabVisible) return;
+      if (isSoftwareGl) {
+        afterDraw(tick);
+      } else {
+        frameId = requestAnimationFrame(tick);
+      }
+    };
+
     const tick = () => {
-      if (disposed) return;
+      if (disposed || !isInViewport || !isTabVisible) return;
 
       const delta = Math.min(clock.getDelta(), 0.05);
       const elapsed = clock.getElapsedTime();
@@ -860,17 +869,49 @@ export function HeroWholesale3D() {
       instancedNodes.instanceMatrix.needsUpdate = true;
 
       renderer.render(scene, camera);
+      scheduleNext();
+    };
 
-      if (isSoftwareGl) {
-        afterDraw(tick);
-      } else {
+    const resumeIfVisible = () => {
+      if (!disposed && isInViewport && isTabVisible) {
+        clock.getDelta();
+        cancelAnimationFrame(frameId);
+        clearTimeout(frameId);
         frameId = requestAnimationFrame(tick);
       }
     };
 
+    const visibilityObserver = new IntersectionObserver(
+      (entries) => {
+        const visible = entries[0]?.isIntersecting ?? true;
+        if (visible !== isInViewport) {
+          isInViewport = visible;
+          if (visible) {
+            resumeIfVisible();
+          } else {
+            cancelAnimationFrame(frameId);
+            clearTimeout(frameId);
+          }
+        }
+      },
+      { threshold: 0.05 }
+    );
+    visibilityObserver.observe(container);
+
+    const handleVisibilityChange = () => {
+      isTabVisible = !document.hidden;
+      if (isTabVisible) {
+        resumeIfVisible();
+      } else {
+        cancelAnimationFrame(frameId);
+        clearTimeout(frameId);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     if (isSoftwareGl) {
       renderer.render(scene, camera);
-      afterDraw(tick);
+      scheduleNext();
     } else {
       frameId = requestAnimationFrame(tick);
     }
@@ -879,6 +920,8 @@ export function HeroWholesale3D() {
       disposed = true;
       cancelAnimationFrame(frameId);
       clearTimeout(frameId);
+      visibilityObserver.disconnect();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       resizeObserver.disconnect();
       domEl.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointermove', handlePointerMove);
@@ -893,7 +936,7 @@ export function HeroWholesale3D() {
       envRT.dispose();
       renderer.dispose();
     };
-  }, []);
+  }, [active]);
 
   const handleResetView = () => {
     setPreset('overview');
